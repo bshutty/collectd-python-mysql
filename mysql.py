@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # CollectD MySQL plugin, designed for MySQL 5.5+ (specifically Percona Server)
 #
 # Pulls most of the same metrics as the Percona Monitoring Plugins for Cacti,
@@ -12,30 +11,24 @@
 #  	Host localhost
 #  	Port 3306 (optional)
 #  	User root
-#  	Password xxxx
+#  	Password MYSQL_INSTANCEMYSQL_INSTANCE
 #  	HeartbeatTable percona.heartbeat (optional, if using pt-heartbeat)
 #   Verbose true (optional, to enable debugging)
 #  </Module>
 #
 # Requires "MySQLdb" for Python
 #
-# Author: Chris Boulton <chris@chrisboulton.com>
 # License: MIT (http://www.opensource.org/licenses/mit-license.php)
 #
 
 import collectd
 import re
 import MySQLdb
+import collections
 
-MYSQL_CONFIG = {
-	'Host':           'localhost',
-	'Port':           3306,
-	'User':           'root',
-	'Password':       '',
-	'HeartbeatTable': '',
-	'Verbose':        False,
-	'DefaultsFile':   ''
-}
+CONFIGS = []
+MYSQL_INSTANCES = collections.defaultdict(dict)
+
 
 MYSQL_STATUS_VARS = {
 	'Aborted_clients': 'counter',
@@ -285,22 +278,22 @@ MYSQL_INNODB_STATUS_MATCHES = {
 	},
 }
 
-def get_mysql_conn():
+def get_mysql_conn(DefaultsFile):
     # if defaults file is set, use it vice user and password
-	if MYSQL_CONFIG['DefaultsFile']:
+	if DefaultsFile:
 		return MySQLdb.connect(
-			host=MYSQL_CONFIG['Host'],
-			port=MYSQL_CONFIG['Port'],
-			read_default_file=MYSQL_CONFIG['DefaultsFile']
+			host=MYSQL_INSTANCES[MYSQL_INSTANCE]['Host'],
+			port=MYSQL_INSTANCES[MYSQL_INSTANCE]['Port'],
+			read_default_file=DefaultsFile
 		)
 	else:
-		return MySQLdb.connect(
-			host=MYSQL_CONFIG['Host'],
-			port=MYSQL_CONFIG['Port'],
-			user=MYSQL_CONFIG['User'],
-			passwd=MYSQL_CONFIG['Password']
-		)
 
+		return MySQLdb.connect(
+			host=MYSQL_INSTANCES[MYSQL_INSTANCE]['Host'],
+			port=MYSQL_INSTANCES[MYSQL_INSTANCE]['Port'],
+			user=MYSQL_INSTANCES[MYSQL_INSTANCE]['User'],
+			passwd=MYSQL_INSTANCES[MYSQL_INSTANCE]['Password']
+		)
 def mysql_query(conn, query):
 	cur = conn.cursor(MySQLdb.cursors.DictCursor)
 	cur.execute(query)
@@ -351,12 +344,12 @@ def fetch_mysql_slave_stats(conn):
 		'slave_lag':       slave_row['Seconds_Behind_Master'] if slave_row['Seconds_Behind_Master'] != None else 0,
 	}
 
-	if MYSQL_CONFIG['HeartbeatTable']:
+	if MYSQL_INSTANCES[MYSQL_INSTANCE]['HeartbeatTable']:
 		query = """
 			SELECT MAX(UNIX_TIMESTAMP() - UNIX_TIMESTAMP(ts)) AS delay
 			FROM %s
 			WHERE server_id = %s
-		""" % (MYSQL_CONFIG['HeartbeatTable'], slave_row['Master_Server_Id'])
+		""" % (MYSQL_INSTANCES[MYSQL_INSTANCE]['HeartbeatTable'], slave_row['Master_Server_Id'])
 		result = mysql_query(conn, query)
 		row    = result.fetchone()
 		if 'delay' in row and row['delay'] != None:
@@ -457,7 +450,7 @@ def fetch_innodb_stats(conn):
 	return stats
 
 def log_verbose(msg):
-	if MYSQL_CONFIG['Verbose'] == False:
+	if MYSQL_INSTANCES[MYSQL_INSTANCE]['Verbose'] == False:
 		return
 	collectd.info('mysql plugin: %s' % msg)
 
@@ -477,59 +470,75 @@ def dispatch_value(prefix, key, value, type, type_instance=None):
 	val.dispatch()
 
 def configure_callback(conf):
-	global MYSQL_CONFIG
+	global MYSQL_INSTANCES, MYSQL_INSTANCE
 	for node in conf.children:
-		if node.key in MYSQL_CONFIG:
-			MYSQL_CONFIG[node.key] = node.values[0]
-
-	MYSQL_CONFIG['Port']    = int(MYSQL_CONFIG['Port'])
-	MYSQL_CONFIG['Verbose'] = bool(MYSQL_CONFIG['Verbose'])
+		if node.key == "Instance":
+            		# if the instance is named, get the first given name
+            		if len(node.values):
+                		if len(node.values) > 1:
+                    			collectd.info("%s: Ignoring extra instance names (%s)" % (__name__, ", ".join(node.values[1:])) )
+                		MYSQL_INSTANCE = node.values[0]
+			else:
+                                MYSQL_INSTANCE = 'default'
+			for child in node.children:
+				MYSQL_INSTANCES[MYSQL_INSTANCE]['Verbose'] = 'False'
+				MYSQL_INSTANCES[MYSQL_INSTANCE]['DefaultsFile'] = ''
+				MYSQL_INSTANCES[MYSQL_INSTANCE]['HeartbeatTable'] = ''
+                       		if child.key == 'Host':
+                       			MYSQL_INSTANCES[MYSQL_INSTANCE]['Host']    = str(child.values[0])
+                       		if child.key == 'Port':
+                       			MYSQL_INSTANCES[MYSQL_INSTANCE]['Port']    = int(child.values[0])
+                       		if child.key == 'Verbose':
+                       			MYSQL_INSTANCES[MYSQL_INSTANCE]['Verbose'] = bool(child.values[0])
+                       		if child.key == 'DefaultsFile':
+                    			MYSQL_INSTANCES[MYSQL_INSTANCE]['DefaultsFile'] = str(child.values[0])
+                       		MYSQL_INSTANCES[MYSQL_INSTANCE]['Instance'] = MYSQL_INSTANCE
 
 def read_callback():
-	global MYSQL_STATUS_VARS
-	conn = get_mysql_conn()
+	for MYSQL_INSTANCE in MYSQL_INSTANCES:
+		global MYSQL_STATUS_VARS
+		conn = get_mysql_conn(MYSQL_INSTANCES[MYSQL_INSTANCE]['DefaultsFile'])
 
-	mysql_status = fetch_mysql_status(conn)
-	for key in mysql_status:
-		if mysql_status[key] == '': mysql_status[key] = 0
+		mysql_status = fetch_mysql_status(conn)
+		for key in mysql_status:
+			if mysql_status[key] == '': mysql_status[key] = 0
 
-		# collect anything beginning with Com_/Handler_ as these change
-		# regularly between  mysql versions and this is easier than a fixed
-		# list
-		if key.split('_', 2)[0] in ['Com', 'Handler']:
-			ds_type = 'counter'
-		elif key in MYSQL_STATUS_VARS:
-			ds_type = MYSQL_STATUS_VARS[key]
-		else:
-			continue
+			# collect anything beginning with Com_/Handler_ as these change
+			# regularly between  mysql versions and this is easier than a fixed
+			# list
+			if key.split('_', 2)[0] in ['Com', 'Handler']:
+				ds_type = 'counter'
+			elif key in MYSQL_STATUS_VARS:
+				ds_type = MYSQL_STATUS_VARS[key]
+			else:
+				continue
 
-		dispatch_value('status', key, mysql_status[key], ds_type)
+			dispatch_value('status_' + MYSQL_INSTANCES[MYSQL_INSTANCE]['Instance'], key, mysql_status[key], ds_type)
 
-	mysql_variables = fetch_mysql_variables(conn)
-	for key in mysql_variables:
-		dispatch_value('variables', key, mysql_variables[key], 'gauge')
+		mysql_variables = fetch_mysql_variables(conn)
+		for key in mysql_variables:
+			dispatch_value('variables_' + MYSQL_INSTANCES[MYSQL_INSTANCE]['Instance'], key, mysql_variables[key], 'gauge')
 
-	mysql_master_status = fetch_mysql_master_stats(conn)
-	for key in mysql_master_status:
-		dispatch_value('master', key, mysql_master_status[key], 'gauge')
+		mysql_master_status = fetch_mysql_master_stats(conn)
+		for key in mysql_master_status:
+			dispatch_value('master_' + MYSQL_INSTANCES[MYSQL_INSTANCE]['Instance'], key, mysql_master_status[key], 'gauge')
 
-	mysql_states = fetch_mysql_process_states(conn)
-	for key in mysql_states:
-		dispatch_value('state', key, mysql_states[key], 'gauge')
+		mysql_states = fetch_mysql_process_states(conn)
+		for key in mysql_states:
+			dispatch_value('state_' + MYSQL_INSTANCES[MYSQL_INSTANCE]['Instance'], key, mysql_states[key], 'gauge')
 
-	slave_status = fetch_mysql_slave_stats(conn)
-	for key in slave_status:
-		dispatch_value('slave', key, slave_status[key], 'gauge')
+		slave_status = fetch_mysql_slave_stats(conn)
+		for key in slave_status:
+			dispatch_value('slave_' + MYSQL_INSTANCES[MYSQL_INSTANCE]['Instance'], key, slave_status[key], 'gauge')
 
-	response_times = fetch_mysql_response_times(conn)
-	for key in response_times:
-		dispatch_value('response_time_total', str(key), response_times[key]['total'], 'counter')
-		dispatch_value('response_time_count', str(key), response_times[key]['count'], 'counter')
+		response_times = fetch_mysql_response_times(conn)
+		for key in response_times:
+			dispatch_value('response_time_total_' + MYSQL_INSTANCES[MYSQL_INSTANCE]['Instance'], str(key), response_times[key]['total'], 'counter')
+			dispatch_value('response_time_count_' + MYSQL_INSTANCES[MYSQL_INSTANCE]['Instance'], str(key), response_times[key]['count'], 'counter')
 
-	innodb_status = fetch_innodb_stats(conn)
-	for key in MYSQL_INNODB_STATUS_VARS:
-		if key not in innodb_status: continue
-		dispatch_value('innodb', key, innodb_status[key], MYSQL_INNODB_STATUS_VARS[key])
-
+		innodb_status = fetch_innodb_stats(conn)
+		for key in MYSQL_INNODB_STATUS_VARS:
+			if key not in innodb_status: continue
+			dispatch_value('innodb_' + MYSQL_INSTANCES[MYSQL_INSTANCE]['Instance'], key, innodb_status[key], MYSQL_INNODB_STATUS_VARS[key])
 collectd.register_read(read_callback)
 collectd.register_config(configure_callback)
