@@ -28,12 +28,20 @@ You should then configure the MySQL plugin:
 	<Plugin python>
 		Import mysql
 		<Module mysql>
-			Host "localhost" (default: localhost)
-			Port 3306 (default: 3306)
-			User "root" (default: root)
-			Password "xxxx" (default: empty)
-			HeartbeatTable "percona.heartbeat" (if using pt-heartbeat to track slave lag)
-			Verbose false (default: false)
+			<Instance instance01>
+				Host "localhost" (default: localhost)
+				Port 3306 (default: 3306)
+				User "root" (default: root)
+				Password "xxxx" (default: empty)
+				HeartbeatTable "percona.heartbeat" (if using pt-heartbeat to track slave lag)
+				Verbose false (default: false)
+			</Instance>
+			<Instance instance 02>
+				Host "localhost"
+				Port 3307
+				User "root"
+				Password "xxxx"
+			</Instance>
 		</Module>
 	</Plugin>
 
@@ -43,9 +51,11 @@ use of a nonstandard socket location.
 	<Plugin python>
 		Import mysql
 		<Module mysql>
-			Host "localhost"
-			Port 3306
-			DefaultsFile "/root/.my.cnf-foo"
+			<Instance instance01>
+				Host "localhost"
+				Port 3306
+				DefaultsFile "/root/.my.cnf-foo"
+			</Instance>
 		</Module>
 	</Plugin>
 
