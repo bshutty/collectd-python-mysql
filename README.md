@@ -60,14 +60,14 @@ use of a nonstandard socket location.
 	</Plugin>
 This module still recognizes old single instance configs without <Instance> tags.
 
-<Plugin python>
+	<Plugin python>
                 Import mysql
                 <Module mysql>
                        Host "localhost"
                        Port 3306
                        DefaultsFile "/root/.my.cnf-foo"
                 </Module>
-</Plugin>
+	</Plugin>
 
 ## Metrics
 
