@@ -67,7 +67,7 @@ This module still recognizes old single instance configs without <Instance> tags
                        Port 3306
                        DefaultsFile "/root/.my.cnf-foo"
                 </Module>
-        </Plugin>
+</Plugin>
 
 ## Metrics
 
