@@ -478,8 +478,10 @@ def configure_callback(conf):
                 		if len(node.values) > 1:
                     			collectd.info("%s: Ignoring extra instance names (%s)" % (__name__, ", ".join(node.values[1:])) )
                 		MYSQL_INSTANCE = node.values[0]
-			else:
+					
+			else: 
                                 MYSQL_INSTANCE = 'default'
+
 			for child in node.children:
 				MYSQL_INSTANCES[MYSQL_INSTANCE]['Verbose'] = 'False'
 				MYSQL_INSTANCES[MYSQL_INSTANCE]['DefaultsFile'] = ''
@@ -493,6 +495,21 @@ def configure_callback(conf):
                        		if child.key == 'DefaultsFile':
                     			MYSQL_INSTANCES[MYSQL_INSTANCE]['DefaultsFile'] = str(child.values[0])
                        		MYSQL_INSTANCES[MYSQL_INSTANCE]['Instance'] = MYSQL_INSTANCE
+		else:
+			MYSQL_INSTANCE = 'stand-alone'
+			for node in conf.children:
+                                MYSQL_INSTANCES[MYSQL_INSTANCE]['Verbose'] = 'False'
+                                MYSQL_INSTANCES[MYSQL_INSTANCE]['DefaultsFile'] = ''
+                                MYSQL_INSTANCES[MYSQL_INSTANCE]['HeartbeatTable'] = ''
+                                if node.key == 'Host':
+                                        MYSQL_INSTANCES[MYSQL_INSTANCE]['Host']    = str(node.values[0])
+                                if node.key == 'Port':
+                                        MYSQL_INSTANCES[MYSQL_INSTANCE]['Port']    = int(node.values[0])
+                                if node.key == 'Verbose':
+                                        MYSQL_INSTANCES[MYSQL_INSTANCE]['Verbose'] = bool(node.values[0])
+                                if node.key == 'DefaultsFile':
+                                        MYSQL_INSTANCES[MYSQL_INSTANCE]['DefaultsFile'] = str(node.values[0])
+                                MYSQL_INSTANCES[MYSQL_INSTANCE]['Instance'] = MYSQL_INSTANCE
 
 def read_callback():
 	for MYSQL_INSTANCE in MYSQL_INSTANCES:
