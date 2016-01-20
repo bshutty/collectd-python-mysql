@@ -452,7 +452,7 @@ def fetch_innodb_stats(conn):
 def log_verbose(msg):
 	if MYSQL_INSTANCES[MYSQL_INSTANCE]['Verbose'] == False:
 		return
-	collectd.info('mysql plugin: %s' % msg)
+	#collectd.info('mysql plugin: %s' % msg)
 
 def dispatch_value(prefix, key, value, type, type_instance=None):
 	if not type_instance:
