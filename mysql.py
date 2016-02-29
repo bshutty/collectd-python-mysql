@@ -266,15 +266,15 @@ MYSQL_INNODB_STATUS_MATCHES = {
 	# --Thread 139954487744256 has waited at dict0dict.cc line 472 for 0.0000 seconds the semaphore:
 	'seconds the semaphore': {
 		'innodb_sem_waits': lambda row, stats: stats['innodb_sem_waits'] + 1,
-		'innodb_sem_wait_time_ms': lambda row, stats: int(row[9]) * 1000,
+		'innodb_sem_wait_time_ms': lambda row, stats: float(row[9]) * 1000,
 	},
 	# mysql tables in use 1, locked 1
 	'mysql tables in use': {
-		'innodb_tables_in_use': lambda row, stats: stats['innodb_tables_in_use'] + int(row[4]),
-		'innodb_locked_tables': lambda row, stats: stats['innodb_locked_tables'] + int(row[6]),
+		'innodb_tables_in_use': lambda row, stats: stats['innodb_tables_in_use'] + float(row[4]),
+		'innodb_locked_tables': lambda row, stats: stats['innodb_locked_tables'] + float(row[6]),
 	},
 	"------- TRX HAS BEEN": {
-		"innodb_lock_wait_secs": lambda row, stats: stats['innodb_lock_wait_secs'] + int(row[5]),
+		"innodb_lock_wait_secs": lambda row, stats: stats['innodb_lock_wait_secs'] + float(row[5]),
 	},
 }
 
@@ -432,10 +432,10 @@ def fetch_innodb_stats(conn):
 		# 205 lock struct(s), heap size 30248, 37 row lock(s), undo log entries 1
 		elif line.find("lock struct(s)") != -1:
 			if line.find("LOCK WAIT") != -1:
-				stats['innodb_lock_structs'] += int(row[2])
+				stats['innodb_lock_structs'] += float(row[2])
 				stats['locked_transactions'] += 1
 			else:
-				stats['innodb_lock_structs'] += int(row[0])
+				stats['innodb_lock_structs'] += float(row[0])
 		else:
 			for match in MYSQL_INNODB_STATUS_MATCHES:
 				if line.find(match) == -1: continue
@@ -461,7 +461,7 @@ def dispatch_value(prefix, key, value, type, type_instance=None):
 	log_verbose('Sending value: %s/%s=%s' % (prefix, type_instance, value))
 	if not value:
 		return
-	value = int(value) # safety check
+	value = float(value) # safety check
 
 	val               = collectd.Values(plugin='mysql', plugin_instance=prefix)
 	val.type          = type
