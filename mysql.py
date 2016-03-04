@@ -434,6 +434,8 @@ def fetch_innodb_stats(conn):
 			if line.find("LOCK WAIT") != -1:
 				stats['innodb_lock_structs'] += float(row[2])
 				stats['locked_transactions'] += 1
+                        elif row[0] == 'ROLLING':
+                                stats['innodb_lock_structs'] += float(row[2])
 			else:
 				stats['innodb_lock_structs'] += float(row[0])
 		else:
