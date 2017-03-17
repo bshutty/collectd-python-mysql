@@ -1,4 +1,4 @@
-# CollectD MySQL plugin, designed for MySQL 5.5+ (specifically Percona Server)
+# Collect MySQL plugin, designed for MySQL 5.5+ (specifically Percona Server)
 #
 # Pulls most of the same metrics as the Percona Monitoring Plugins for Cacti,
 # however is designed to be used on newer versions of MySQL and as such drops
@@ -432,19 +432,28 @@ def fetch_innodb_stats(conn):
 		# 205 lock struct(s), heap size 30248, 37 row lock(s), undo log entries 1
 		elif line.find("lock struct(s)") != -1:
 			if line.find("LOCK WAIT") != -1:
-				stats['innodb_lock_structs'] += float(row[2])
+                                try:
+				    stats['innodb_lock_structs'] += float(row[2])
+				except ValueError:
+				    pass
 				stats['locked_transactions'] += 1
                         elif row[0] == 'ROLLING':
                                 stats['innodb_lock_structs'] += float(row[2])
 			else:
-				stats['innodb_lock_structs'] += float(row[0])
+                                try:
+				    stats['innodb_lock_structs'] += float(row[0])
+                                except ValueError:
+                                    pass
 		else:
 			for match in MYSQL_INNODB_STATUS_MATCHES:
 				if line.find(match) == -1: continue
 				for key in MYSQL_INNODB_STATUS_MATCHES[match]:
 					value = MYSQL_INNODB_STATUS_MATCHES[match][key]
 					if type(value) is int:
-						stats[key] = int(row[value])
+                                                try:
+						    stats[key] = int(row[value])
+                                                except ValueError:
+                                                    pass
 					else:
 						stats[key] = value(row, stats)
 				break
@@ -460,8 +469,9 @@ def dispatch_value(prefix, key, value, type, type_instance=None):
 	if not type_instance:
 		type_instance = key
 
-	log_verbose('Sending value: %s/%s=%s' % (prefix, type_instance, value))
-	if not value:
+	log_verbose('Prepping value: %s/%s=%s' % (prefix, type_instance, value))
+	if not value and value !=0:
+                log_verbose("value determined to be not sendable, dropping data point.")
 		return
 	value = float(value) # safety check
 
@@ -470,10 +480,11 @@ def dispatch_value(prefix, key, value, type, type_instance=None):
 	val.type_instance = type_instance
 	val.values        = [value]
 	val.dispatch()
+        log_verbose('Dispatching value: %s/%s=%s' % (prefix, type_instance, value))     
 
 def configure_callback(conf):
 	global MYSQL_INSTANCES, MYSQL_INSTANCE
-	for node in conf.children:
+ 	for node in conf.children:
 		if node.key == "Instance":
             		# if the instance is named, get the first given name
             		if len(node.values):
